@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+.vercel/
+
+# Environment files
+.env
+*.env*
+
+# Logs
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Other projects in folder
+client/
+server/
+student-registration/
+student-registration.zip
