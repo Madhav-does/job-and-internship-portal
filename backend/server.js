@@ -18,37 +18,94 @@ mongoose.connect(MONGO_URI, {
   .then(() => console.log('MongoDB connected successfully'))
   .catch((err) => console.log('MongoDB warning (using in-memory fallback):', err.message));
 
-// Job Schema
+// Job Schema (Enhanced for Freshers)
 const jobSchema = new mongoose.Schema({
   title: String,
   company: String,
   type: String,
   stipend: String,
+  location: { type: String, default: 'Remote / Pan-India' },
+  isFresher: { type: Boolean, default: true },
+  skills: { type: String, default: 'Web Dev, Problem Solving' },
   createdAt: { type: Date, default: Date.now }
 });
 
 const Job = mongoose.model('Job', jobSchema);
 
-// Application Schema
+// Application Schema (Enhanced for Student Details)
 const applicationSchema = new mongoose.Schema({
   jobTitle: String,
   company: String,
   name: String,
   email: String,
+  degree: { type: String, default: 'B.Tech / BCA / Any Graduate' },
+  gradYear: { type: String, default: '2026' },
+  portfolio: { type: String, default: '' },
   appliedAt: { type: Date, default: Date.now }
 });
 
 const Application = mongoose.model('Application', applicationSchema);
 
-// In-memory fallback data for demo environments (e.g. Vercel before cloud DB is configured)
+// In-memory fallback data with vibrant sample listings for freshers
 let memoryJobs = [
-  { _id: '1', title: 'Web Development Intern', company: 'Infosys', type: 'Internship', stipend: '25,000 / month', createdAt: new Date() },
-  { _id: '2', title: 'Full Stack Developer', company: 'TCS', type: 'Job', stipend: '6.5 LPA', createdAt: new Date() },
-  { _id: '3', title: 'Server Handler', company: 'HCL', type: 'Job', stipend: '50,000 / month', createdAt: new Date() }
+  {
+    _id: '1',
+    title: 'Frontend React Developer',
+    company: 'Google',
+    type: 'Job',
+    stipend: '₹14 LPA',
+    location: 'Bangalore / Hybrid',
+    isFresher: true,
+    skills: 'React, JavaScript, HTML/CSS',
+    createdAt: new Date()
+  },
+  {
+    _id: '2',
+    title: 'Web Development Intern',
+    company: 'Infosys',
+    type: 'Internship',
+    stipend: '₹25,000 / month',
+    location: 'Remote',
+    isFresher: true,
+    skills: 'MERN Stack, Git, REST APIs',
+    createdAt: new Date()
+  },
+  {
+    _id: '3',
+    title: 'Graduate Software Engineer',
+    company: 'TCS',
+    type: 'Job',
+    stipend: '₹7.5 LPA',
+    location: 'Hyderabad / Pune',
+    isFresher: true,
+    skills: 'Java / Python, SQL, DSA',
+    createdAt: new Date()
+  },
+  {
+    _id: '4',
+    title: 'AI & Data Analyst Intern',
+    company: 'Microsoft',
+    type: 'Internship',
+    stipend: '₹40,000 / month',
+    location: 'Remote',
+    isFresher: true,
+    skills: 'Python, Excel, Machine Learning',
+    createdAt: new Date()
+  }
 ];
 
 let memoryApps = [
-  { _id: '1', name: 'Rahul Sharma', jobTitle: 'Web Development Intern', company: 'Infosys', email: 'rahul@example.com', appliedAt: new Date() }
+  {
+    _id: '1',
+    name: 'Rahul Sharma',
+    jobTitle: 'Web Development Intern',
+    company: 'Infosys',
+    email: 'rahul@example.com',
+    degree: 'B.Tech Computer Science',
+    gradYear: '2026',
+    portfolio: 'https://github.com/rahul',
+    appliedAt: new Date()
+  }
 ];
 
 // 1. GET - Read all jobs (newest first)
