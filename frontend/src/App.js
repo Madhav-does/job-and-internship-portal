@@ -1,9 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
+// Helper to assign a dynamic gradient avatar based on company name
+const getCompanyAvatar = (name = 'Company') => {
+  const char = (name.trim()[0] || 'C').toUpperCase();
+  const gradients = [
+    'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', // Indigo/Purple
+    'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)', // Sky/Blue
+    'linear-gradient(135deg, #10b981 0%, #14b8a6 100%)', // Emerald/Teal
+    'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)', // Amber/Orange
+    'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)', // Pink/Rose
+  ];
+  const index = (name.charCodeAt(0) || 0) % gradients.length;
+  return { char, bg: gradients[index] };
+};
+
 function App() {
-  // Navigation tab state: 'browse' | 'addJob' | 'history'
+  // Navigation: 'browse' | 'post' | 'history'
   const [activeTab, setActiveTab] = useState('browse');
+
+  // View mode in Browse: 'grid' (cards) | 'table'
+  const [viewMode, setViewMode] = useState('grid');
+
+  // Search & Filter state
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'Job' | 'Internship'
 
   // Jobs state
   const [jobs, setJobs] = useState([]);
@@ -13,10 +34,7 @@ function App() {
   const [stipend, setStipend] = useState('');
   const [editId, setEditId] = useState(null);
 
-  // Search filter state
-  const [search, setSearch] = useState('');
-
-  // Apply state
+  // Apply Modal state
   const [applyingJob, setApplyingJob] = useState(null);
   const [applicantName, setApplicantName] = useState('');
   const [applicantEmail, setApplicantEmail] = useState('');
@@ -24,20 +42,20 @@ function App() {
   // Applications list state
   const [applications, setApplications] = useState([]);
 
-  // Toast notification message
-  const [notification, setNotification] = useState('');
+  // Toast notification state
+  const [toast, setToast] = useState('');
 
-  // In development, use local backend on port 5000; in production on Vercel, use relative URL
+  // API URLs
   const BACKEND_URL = import.meta.env.DEV
     ? 'http://localhost:5000'
     : (import.meta.env.VITE_API_URL || '');
   const API_JOBS = `${BACKEND_URL}/api/jobs`;
   const API_APPS = `${BACKEND_URL}/api/applications`;
 
-  // Helper to show a temporary notification banner
-  const showNotification = (msg) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(''), 4000);
+  // Trigger floating toast
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(''), 3500);
   };
 
   // 1. Fetch all jobs (READ)
@@ -48,7 +66,7 @@ function App() {
       .catch((err) => console.log('Error fetching jobs:', err));
   };
 
-  // 2. Fetch all submitted applications (READ)
+  // 2. Fetch all applications (READ)
   const fetchApplications = () => {
     fetch(API_APPS)
       .then((res) => res.json())
@@ -67,7 +85,7 @@ function App() {
     const jobData = { title, company, type, stipend };
 
     if (editId) {
-      // UPDATE existing job
+      // UPDATE
       fetch(`${API_JOBS}/${editId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -77,11 +95,11 @@ function App() {
           fetchJobs();
           resetForm();
           setActiveTab('browse');
-          showNotification('Opportunity updated successfully!');
+          showToast(`Updated "${title}" successfully!`);
         })
         .catch((err) => console.log(err));
     } else {
-      // CREATE new job
+      // CREATE
       fetch(API_JOBS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +109,7 @@ function App() {
           fetchJobs();
           resetForm();
           setActiveTab('browse');
-          showNotification('New opportunity posted successfully!');
+          showToast(`Published "${title}" at ${company}!`);
         })
         .catch((err) => console.log(err));
     }
@@ -104,25 +122,25 @@ function App() {
     setType(job.type);
     setStipend(job.stipend);
     setEditId(job._id);
-    setActiveTab('addJob');
+    setActiveTab('post');
     setApplyingJob(null);
   };
 
   // 5. Delete a job
-  const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this listing?')) {
+  const handleDelete = (id, roleTitle) => {
+    if (window.confirm(`Are you sure you want to delete "${roleTitle}"?`)) {
       fetch(`${API_JOBS}/${id}`, {
         method: 'DELETE',
       })
         .then(() => {
           fetchJobs();
-          showNotification('Opportunity deleted successfully.');
+          showToast(`Opportunity "${roleTitle}" deleted.`);
         })
         .catch((err) => console.log(err));
     }
   };
 
-  // Reset job form inputs
+  // Reset form inputs
   const resetForm = () => {
     setTitle('');
     setCompany('');
@@ -131,14 +149,7 @@ function App() {
     setEditId(null);
   };
 
-  // 6. Open Apply box for a job
-  const handleOpenApply = (job) => {
-    setApplyingJob(job);
-    setApplicantName('');
-    setApplicantEmail('');
-  };
-
-  // 7. Submit Application
+  // 6. Submit Application via Modal
   const handleApplySubmit = (e) => {
     e.preventDefault();
     const appData = {
@@ -155,7 +166,7 @@ function App() {
     })
       .then((res) => res.json())
       .then(() => {
-        showNotification(`Application submitted successfully for "${applyingJob.title}"!`);
+        showToast(`🎉 Applied to ${applyingJob.title} at ${applyingJob.company}!`);
         setApplyingJob(null);
         setApplicantName('');
         setApplicantEmail('');
@@ -164,310 +175,690 @@ function App() {
       .catch((err) => console.log(err));
   };
 
-  // Filter jobs by search query
-  const filteredJobs = jobs.filter(
-    (job) =>
+  // Filter jobs based on search & category
+  const filteredJobs = jobs.filter((job) => {
+    const matchesSearch =
       job.title.toLowerCase().includes(search.toLowerCase()) ||
-      job.company.toLowerCase().includes(search.toLowerCase())
-  );
+      job.company.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory =
+      categoryFilter === 'all' || job.type === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
-    <div className="container">
-      {/* Header */}
-      <div className="header">
-        <h2>Job & Internship Portal</h2>
-        <p>A full-stack student placement and application platform (MERN)</p>
-      </div>
+    <div className="app-wrapper">
+      {/* ==================== NAVBAR ==================== */}
+      <header className="navbar">
+        <div className="brand">
+          <div className="brand-icon">💼</div>
+          <div className="brand-info">
+            <h1>Job & Internship Portal</h1>
+            <p>Student Career & Placement Network • MERN Stack</p>
+          </div>
+        </div>
+        <div className="nav-actions">
+          <div className="db-pill">
+            <span className="pulse-dot"></span>
+            MongoDB Live
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              resetForm();
+              setActiveTab('post');
+            }}
+          >
+            ➕ Post Opening
+          </button>
+        </div>
+      </header>
 
-      {/* Tabs Navigation Bar */}
-      <div className="tab-bar">
-        <button
-          className={`tab-btn ${activeTab === 'browse' ? 'active' : ''}`}
-          onClick={() => setActiveTab('browse')}
-        >
-          💼 Browse Opportunities ({jobs.length})
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'addJob' ? 'active' : ''}`}
+      {/* ==================== STATS METRICS BAR ==================== */}
+      <section className="stats-grid">
+        <div
+          className="stat-card"
           onClick={() => {
-            if (!editId) resetForm();
-            setActiveTab('addJob');
+            setCategoryFilter('all');
+            setActiveTab('browse');
           }}
         >
-          {editId ? '✏️ Edit Opportunity' : '➕ Post a Job / Internship'}
+          <div className="stat-icon blue">💼</div>
+          <div className="stat-content">
+            <span className="stat-val">{jobs.length}</span>
+            <span className="stat-lbl">Total Opportunities</span>
+          </div>
+        </div>
+
+        <div
+          className="stat-card"
+          onClick={() => {
+            setCategoryFilter('Job');
+            setActiveTab('browse');
+          }}
+        >
+          <div className="stat-icon green">🎯</div>
+          <div className="stat-content">
+            <span className="stat-val">
+              {jobs.filter((j) => j.type === 'Job').length}
+            </span>
+            <span className="stat-lbl">Full-Time Jobs</span>
+          </div>
+        </div>
+
+        <div
+          className="stat-card"
+          onClick={() => {
+            setCategoryFilter('Internship');
+            setActiveTab('browse');
+          }}
+        >
+          <div className="stat-icon amber">🎓</div>
+          <div className="stat-content">
+            <span className="stat-val">
+              {jobs.filter((j) => j.type === 'Internship').length}
+            </span>
+            <span className="stat-lbl">Student Internships</span>
+          </div>
+        </div>
+
+        <div className="stat-card" onClick={() => setActiveTab('history')}>
+          <div className="stat-icon purple">📋</div>
+          <div className="stat-content">
+            <span className="stat-val">{applications.length}</span>
+            <span className="stat-lbl">Applications Logged</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== TAB NAVIGATION ==================== */}
+      <nav className="tab-nav">
+        <button
+          className={`tab-nav-btn ${activeTab === 'browse' ? 'active' : ''}`}
+          onClick={() => setActiveTab('browse')}
+        >
+          🔍 Browse Opportunities
+          <span className="tab-badge">{jobs.length}</span>
         </button>
         <button
-          className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+          className={`tab-nav-btn ${activeTab === 'post' ? 'active' : ''}`}
+          onClick={() => {
+            if (!editId) resetForm();
+            setActiveTab('post');
+          }}
+        >
+          {editId ? '✏️ Edit Opportunity' : '➕ Post a Job'}
+        </button>
+        <button
+          className={`tab-nav-btn ${activeTab === 'history' ? 'active' : ''}`}
           onClick={() => setActiveTab('history')}
         >
-          📋 Application History ({applications.length})
+          📋 Application History
+          <span className="tab-badge">{applications.length}</span>
         </button>
-      </div>
-
-      {/* Notification Banner */}
-      {notification && <div className="notification-banner">{notification}</div>}
+      </nav>
 
       {/* ==================== TAB 1: BROWSE OPPORTUNITIES ==================== */}
       {activeTab === 'browse' && (
         <div>
-          {/* Quick Stats Bar */}
-          <div className="stats-bar">
-            <span className="stat-pill">
-              Total Listed: <strong>{jobs.length}</strong>
-            </span>
-            <span className="stat-pill">
-              Jobs: <strong>{jobs.filter((j) => j.type === 'Job').length}</strong>
-            </span>
-            <span className="stat-pill">
-              Internships: <strong>{jobs.filter((j) => j.type === 'Internship').length}</strong>
-            </span>
-            <span className="stat-pill">
-              Applications: <strong>{applications.length}</strong>
-            </span>
-          </div>
-
-          {/* Search Box */}
-          <input
-            type="text"
-            className="search-box"
-            placeholder="🔍 Search by role (e.g. Developer) or company name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          {/* Inline Apply Box (appears when user clicks Apply) */}
-          {applyingJob && (
-            <div className="apply-box">
-              <h3>
-                Apply for: {applyingJob.title} at {applyingJob.company}
-              </h3>
-              <form onSubmit={handleApplySubmit}>
-                <input
-                  type="text"
-                  placeholder="Your Full Name"
-                  value={applicantName}
-                  onChange={(e) => setApplicantName(e.target.value)}
-                  required
-                />
-                <input
-                  type="email"
-                  placeholder="Your Email Address"
-                  value={applicantEmail}
-                  onChange={(e) => setApplicantEmail(e.target.value)}
-                  required
-                />
-                <button type="submit" className="btn-apply">
-                  Submit Application
-                </button>
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setApplyingJob(null)}
-                >
-                  Cancel
-                </button>
-              </form>
+          {/* Toolbar & Filters */}
+          <div className="toolbar">
+            <div className="search-wrapper">
+              <span className="search-icon-svg">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search by role title, technology, or company..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-          )}
 
-          {/* Jobs Table */}
-          {filteredJobs.length === 0 ? (
-            <div className="empty-box">
-              <p>No opportunities found.</p>
+            <div className="filter-group">
               <button
-                className="btn-submit"
-                onClick={() => {
-                  resetForm();
-                  setActiveTab('addJob');
-                }}
+                className={`filter-pill ${categoryFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setCategoryFilter('all')}
               >
-                Post the First Opportunity
+                All Roles ({jobs.length})
+              </button>
+              <button
+                className={`filter-pill ${categoryFilter === 'Job' ? 'active' : ''}`}
+                onClick={() => setCategoryFilter('Job')}
+              >
+                Jobs ({jobs.filter((j) => j.type === 'Job').length})
+              </button>
+              <button
+                className={`filter-pill ${categoryFilter === 'Internship' ? 'active' : ''}`}
+                onClick={() => setCategoryFilter('Internship')}
+              >
+                Internships ({jobs.filter((j) => j.type === 'Internship').length})
               </button>
             </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Role</th>
-                  <th>Company</th>
-                  <th>Type</th>
-                  <th>Stipend / Salary</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredJobs.map((job) => (
-                  <tr key={job._id}>
-                    <td>
-                      <strong>{job.title}</strong>
-                    </td>
-                    <td>{job.company}</td>
-                    <td>
-                      <span
-                        className={
-                          job.type === 'Internship'
-                            ? 'badge-internship'
-                            : 'badge-job'
-                        }
-                      >
-                        {job.type}
+
+            <div className="view-toggle">
+              <button
+                className={`view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Grid / Cards View"
+              >
+                🎴 Cards
+              </button>
+              <button
+                className={`view-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+                title="Table View"
+              >
+                📊 Table
+              </button>
+            </div>
+          </div>
+
+          {/* Empty State */}
+          {filteredJobs.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">🔎</div>
+              <h4>No opportunities found</h4>
+              <p>Try adjusting your search query or publish a new role.</p>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  resetForm();
+                  setActiveTab('post');
+                }}
+              >
+                ➕ Post New Opportunity
+              </button>
+            </div>
+          ) : viewMode === 'grid' ? (
+            /* ===== CARDS GRID VIEW ===== */
+            <div className="cards-grid">
+              {filteredJobs.map((job) => {
+                const avatar = getCompanyAvatar(job.company);
+                return (
+                  <div className="job-card" key={job._id}>
+                    <div>
+                      <div className="card-top">
+                        <div
+                          className="company-avatar"
+                          style={{ background: avatar.bg }}
+                        >
+                          {avatar.char}
+                        </div>
+                        <div className="card-title-group">
+                          <h3 className="card-role">{job.title}</h3>
+                          <p className="card-company">🏢 {job.company}</p>
+                        </div>
+                      </div>
+
+                      <div className="card-badges">
+                        <span
+                          className={`badge ${
+                            job.type === 'Internship'
+                              ? 'badge-internship'
+                              : 'badge-job'
+                          }`}
+                        >
+                          {job.type === 'Internship' ? '🎓 Internship' : '💼 Full-Time'}
+                        </span>
+                        <span className="badge badge-stipend">
+                          💰 {job.stipend}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="card-footer">
+                      <span className="card-date">
+                        {job.createdAt
+                          ? new Date(job.createdAt).toLocaleDateString()
+                          : 'Recently added'}
                       </span>
-                    </td>
-                    <td>{job.stipend}</td>
-                    <td>
-                      <button
-                        className="btn-apply"
-                        onClick={() => handleOpenApply(job)}
-                      >
-                        Apply
-                      </button>
-                      <button
-                        className="btn-edit"
-                        onClick={() => handleEdit(job)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDelete(job._id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
+                      <div className="card-actions">
+                        <button
+                          className="btn btn-success"
+                          onClick={() => setApplyingJob(job)}
+                        >
+                          Apply Now
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-icon"
+                          onClick={() => handleEdit(job)}
+                          title="Edit Job"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="btn btn-danger-ghost btn-icon"
+                          onClick={() => handleDelete(job._id, job.title)}
+                          title="Delete Job"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ===== TABLE VIEW ===== */
+            <div className="table-container">
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th>Opportunity</th>
+                    <th>Type</th>
+                    <th>Compensation</th>
+                    <th>Posted</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredJobs.map((job) => {
+                    const avatar = getCompanyAvatar(job.company);
+                    return (
+                      <tr key={job._id}>
+                        <td>
+                          <div className="company-cell">
+                            <div
+                              className="mini-avatar"
+                              style={{ background: avatar.bg }}
+                            >
+                              {avatar.char}
+                            </div>
+                            <div>
+                              <strong>{job.title}</strong>
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                {job.company}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${
+                              job.type === 'Internship'
+                                ? 'badge-internship'
+                                : 'badge-job'
+                            }`}
+                          >
+                            {job.type}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge badge-stipend">
+                            {job.stipend}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: '12px', color: '#64748b' }}>
+                          {job.createdAt
+                            ? new Date(job.createdAt).toLocaleDateString()
+                            : 'Recent'}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            className="btn btn-success"
+                            style={{ padding: '6px 12px' }}
+                            onClick={() => setApplyingJob(job)}
+                          >
+                            Apply
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-icon"
+                            style={{ display: 'inline-flex', margin: '0 4px' }}
+                            onClick={() => handleEdit(job)}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="btn btn-danger-ghost btn-icon"
+                            style={{ display: 'inline-flex' }}
+                            onClick={() => handleDelete(job._id, job.title)}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
 
-      {/* ==================== TAB 2: POST / EDIT A JOB PAGE ==================== */}
-      {activeTab === 'addJob' && (
-        <div className="form-card">
-          <h3 style={{ marginTop: 0, color: '#1e3a8a', textAlign: 'center' }}>
-            {editId ? '✏️ Edit Opportunity' : '➕ Post a New Opportunity'}
-          </h3>
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', marginTop: 0 }}>
-            {editId
-              ? 'Update the role details below and save your changes.'
-              : 'Fill in the information below to publish a new job or internship.'}
-          </p>
+      {/* ==================== TAB 2: POST / EDIT A JOB ==================== */}
+      {activeTab === 'post' && (
+        <div className="post-layout">
+          {/* Form Card */}
+          <div className="post-card">
+            <h3>{editId ? '✏️ Edit Opportunity' : '🚀 Publish a New Opportunity'}</h3>
+            <p>
+              {editId
+                ? 'Update the fields below to modify your listing in MongoDB.'
+                : 'Share a new job or internship opportunity with students.'}
+            </p>
 
-          <form onSubmit={handleSubmitJob}>
-            <div className="form-group">
-              <label>Role / Job Title *</label>
-              <input
-                type="text"
-                placeholder="e.g. Full Stack Developer, Data Analyst Intern"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
-            </div>
+            <form onSubmit={handleSubmitJob}>
+              <div className="form-field">
+                <label>Job / Internship Title *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. AI Research Intern, Backend Engineer"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="form-group">
-              <label>Company Name *</label>
-              <input
-                type="text"
-                placeholder="e.g. Google, Infosys, Microsoft"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                required
-              />
-            </div>
+              <div className="form-field">
+                <label>Company Name *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Google, Microsoft, Infosys"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="form-group">
-              <label>Opportunity Type *</label>
-              <select value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="Job">Job (Full-time / Part-time)</option>
-                <option value="Internship">Internship</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Stipend / Annual Salary *</label>
-              <input
-                type="text"
-                placeholder="e.g. ₹25,000 / month or ₹8 LPA"
-                value={stipend}
-                onChange={(e) => setStipend(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <button type="submit" className="btn-submit">
-                {editId ? '💾 Save Changes' : '🚀 Publish Opportunity'}
-              </button>
-              {editId && (
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => {
-                    resetForm();
-                    setActiveTab('browse');
-                  }}
+              <div className="form-field">
+                <label>Opportunity Type *</label>
+                <select
+                  className="form-input"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
                 >
-                  Cancel
+                  <option value="Job">💼 Full-Time Job</option>
+                  <option value="Internship">🎓 Student Internship</option>
+                </select>
+              </div>
+
+              <div className="form-field">
+                <label>Stipend / Salary *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. ₹35,000 / month or ₹12 LPA"
+                  value={stipend}
+                  onChange={(e) => setStipend(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ marginTop: '24px', display: 'flex', gap: '10px' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  {editId ? '💾 Save Changes' : '🚀 Publish to Portal'}
                 </button>
-              )}
+                {editId ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      resetForm();
+                      setActiveTab('browse');
+                    }}
+                  >
+                    Cancel Edit
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setTitle('Cloud Engineer Intern');
+                      setCompany('Amazon AWS');
+                      setType('Internship');
+                      setStipend('₹45,000 / month');
+                    }}
+                  >
+                    ✨ Auto-Fill Demo
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Live Preview Card */}
+          <div className="preview-container">
+            <div className="preview-header">
+              <h4>Live Card Preview</h4>
+              <span className="preview-pill">Real-Time Sync</span>
             </div>
-          </form>
+
+            <div className="job-card" style={{ boxShadow: 'none' }}>
+              <div>
+                <div className="card-top">
+                  <div
+                    className="company-avatar"
+                    style={{ background: getCompanyAvatar(company).bg }}
+                  >
+                    {getCompanyAvatar(company).char}
+                  </div>
+                  <div className="card-title-group">
+                    <h3 className="card-role">{title || 'Role Title Here'}</h3>
+                    <p className="card-company">🏢 {company || 'Company Name'}</p>
+                  </div>
+                </div>
+
+                <div className="card-badges">
+                  <span
+                    className={`badge ${
+                      type === 'Internship' ? 'badge-internship' : 'badge-job'
+                    }`}
+                  >
+                    {type === 'Internship' ? '🎓 Internship' : '💼 Full-Time'}
+                  </span>
+                  <span className="badge badge-stipend">
+                    💰 {stipend || 'Compensation'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="card-footer">
+                <span className="card-date">Just now</span>
+                <button className="btn btn-success" disabled style={{ opacity: 0.9 }}>
+                  Apply Now
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: '16px',
+                fontSize: '12px',
+                color: '#64748b',
+                lineHeight: 1.4,
+              }}
+            >
+              💡 This preview reflects how candidates will view your posting on the main job board.
+            </div>
+          </div>
         </div>
       )}
 
       {/* ==================== TAB 3: APPLICATION HISTORY ==================== */}
       {activeTab === 'history' && (
-        <div>
-          <div style={{ textAlign: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: '0 0 5px 0', color: '#1e3a8a' }}>
-              📋 Candidate Application History
-            </h3>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
-              Track all job and internship applications recorded in MongoDB
-            </p>
+        <div className="history-card">
+          <div className="history-header">
+            <div>
+              <h3>📋 Candidate Application Tracker</h3>
+              <p style={{ margin: '3px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+                All student applications stored persistently in MongoDB
+              </p>
+            </div>
+            <div className="status-badge">
+              🟢 {applications.length} Submissions Logged
+            </div>
           </div>
 
           {applications.length === 0 ? (
-            <div className="empty-box">
-              <p>No applications submitted yet.</p>
-              <button className="btn-submit" onClick={() => setActiveTab('browse')}>
-                Browse Opportunities & Apply
+            <div className="empty-state" style={{ border: 'none' }}>
+              <div className="empty-state-icon">📭</div>
+              <h4>No applications received yet</h4>
+              <p>Explore open roles and apply to view your submission history here.</p>
+              <button className="btn btn-primary" onClick={() => setActiveTab('browse')}>
+                Browse Open Roles
               </button>
             </div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Applicant Name</th>
-                  <th>Role Applied</th>
-                  <th>Company</th>
-                  <th>Email</th>
-                  <th>Date Applied</th>
-                </tr>
-              </thead>
-              <tbody>
-                {applications.map((app, index) => (
-                  <tr key={app._id}>
-                    <td>{index + 1}</td>
-                    <td>
-                      <strong>{app.name}</strong>
-                    </td>
-                    <td>{app.jobTitle}</td>
-                    <td>{app.company}</td>
-                    <td>{app.email}</td>
-                    <td>
-                      {app.appliedAt
-                        ? new Date(app.appliedAt).toLocaleDateString()
-                        : 'Recent'}
-                    </td>
+            <div className="table-container" style={{ border: 'none' }}>
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Candidate</th>
+                    <th>Role Applied</th>
+                    <th>Company</th>
+                    <th>Contact Email</th>
+                    <th>Date Applied</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {applications.map((app, index) => {
+                    const avatar = getCompanyAvatar(app.company);
+                    return (
+                      <tr key={app._id}>
+                        <td style={{ color: '#94a3b8', fontWeight: 'bold' }}>
+                          {index + 1}
+                        </td>
+                        <td>
+                          <strong>{app.name}</strong>
+                        </td>
+                        <td>
+                          <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                            {app.jobTitle}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span
+                              style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '4px',
+                                background: avatar.bg,
+                                color: '#fff',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                              }}
+                            >
+                              {avatar.char}
+                            </span>
+                            {app.company}
+                          </div>
+                        </td>
+                        <td>
+                          <a
+                            href={`mailto:${app.email}`}
+                            style={{ color: '#4f46e5', textDecoration: 'none' }}
+                          >
+                            {app.email}
+                          </a>
+                        </td>
+                        <td style={{ fontSize: '12px', color: '#64748b' }}>
+                          {app.appliedAt
+                            ? new Date(app.appliedAt).toLocaleDateString()
+                            : 'Recent'}
+                        </td>
+                        <td>
+                          <span className="status-badge">✅ Received</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* ==================== INTERACTIVE APPLY MODAL ==================== */}
+      {applyingJob && (
+        <div className="modal-overlay" onClick={() => setApplyingJob(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Submit Your Application</h3>
+                <p>Express your interest for this opportunity</p>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setApplyingJob(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="modal-job-summary">
+                <div>
+                  <strong style={{ fontSize: '15px', color: '#0f172a' }}>
+                    {applyingJob.title}
+                  </strong>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+                    🏢 {applyingJob.company}
+                  </div>
+                </div>
+                <span className="badge badge-stipend">
+                  💰 {applyingJob.stipend}
+                </span>
+              </div>
+
+              <form onSubmit={handleApplySubmit}>
+                <div className="form-field">
+                  <label>Full Name *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Enter your legal full name"
+                    value={applicantName}
+                    onChange={(e) => setApplicantName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>College / Personal Email Address *</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="name@university.edu"
+                    value={applicantEmail}
+                    onChange={(e) => setApplicantEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ marginTop: '22px', display: 'flex', gap: '10px' }}>
+                  <button type="submit" className="btn btn-success" style={{ flex: 1 }}>
+                    🚀 Send Application
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setApplyingJob(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== FLOATING TOAST ==================== */}
+      {toast && (
+        <div className="toast">
+          <span className="toast-icon">✓</span>
+          <span>{toast}</span>
         </div>
       )}
     </div>
